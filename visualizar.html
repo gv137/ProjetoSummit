@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualização de Problemas Urbanos - Instrutor</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .visualizar-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        th {
+            background-color: #f2f2f2;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .status-novo {
+            background-color: #ffecb3;
+        }
+        
+        .status-em-analise {
+            background-color: #e3f2fd;
+        }
+        
+        .status-em-andamento {
+            background-color: #e8f5e9;
+        }
+        
+        .status-concluido {
+            background-color: #d7ffd9;
+        }
+        
+        .status-cancelado {
+            background-color: #ffebee;
+        }
+        
+        .btn-logout {
+            background-color: #f44336;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .btn-logout:hover {
+            background-color: #d32f2f;
+        }
+        
+        .btn-refresh {
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        
+        .btn-refresh:hover {
+            background-color: #45a049;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-weight: bold;
+        }
+        
+        .error {
+            color: #f44336;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 20px;
+            color: #757575;
+        }
+        
+        .foto-link {
+            color: #0056b3;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        
+        /* Modal para visualização de fotos */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+        }
+        
+        .modal-content {
+            margin: 5% auto;
+            padding: 20px;
+            max-width: 80%;
+            max-height: 80%;
+            background-color: #fff;
+            border-radius: 8px;
+            position: relative;
+        }
+        
+        .close-modal {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .modal-image {
+            max-width: 100%;
+            max-height: 70vh;
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="visualizar-container">
+        <div class="header-actions">
+            <h1>Problemas Urbanos Registrados</h1>
+            <div>
+                <button id="btn-refresh" class="btn-refresh">Atualizar Dados</button>
+                <button id="btn-logout" class="btn-logout">Sair</button>
+            </div>
+        </div>
+        
+        <div id="loading" class="loading">Carregando dados...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        
+        <div id="table-container" class="table-container" style="display: none;">
+            <table id="problemas-table">
+                <thead>
+                    <tr>
+                        <th>Data/Hora</th>
+                        <th>Cidadão</th>
+                        <th>Localização</th>
+                        <th>Tipo</th>
+                        <th>Descrição</th>
+                        <th>QR Code</th>
+                        <th>Foto</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="problemas-body">
+                    <!-- Dados serão inseridos aqui via JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Modal para visualização de fotos -->
+    <div id="foto-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <img id="modal-image" class="modal-image" src="" alt="Foto do problema">
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // Verificar se o usuário está autenticado
+            if (!sessionStorage.getItem("instructorAuthenticated")) {
+                // Redirecionar para a página de login
+                window.location.href = "instrutor.html";
+                return;
+            }
+            
+            const loadingElement = document.getElementById("loading");
+            const errorElement = document.getElementById("error");
+            const tableContainer = document.getElementById("table-container");
+            const tableBody = document.getElementById("problemas-body");
+            const btnRefresh = document.getElementById("btn-refresh");
+            const btnLogout = document.getElementById("btn-logout");
+            const fotoModal = document.getElementById("foto-modal");
+            const modalImage = document.getElementById("modal-image");
+            const closeModal = document.querySelector(".close-modal");
+            
+            // URL do Google Apps Script que fornecerá os dados
+            // Esta é uma simulação, pois não temos a URL real do script
+            const scriptURL = "https://script.google.com/macros/s/SEU_ID_DO_SCRIPT_AQUI/exec";
+            
+            // Função para carregar os dados da planilha
+            function carregarDados() {
+                loadingElement.style.display = "block";
+                tableContainer.style.display = "none";
+                errorElement.style.display = "none";
+                
+                // Simulação de carregamento de dados
+                // Em um cenário real, isso seria uma chamada fetch para o Google Apps Script
+                setTimeout(() => {
+                    // Dados simulados para demonstração
+                    const dadosSimulados = [
+                        {
+                            timestamp: "27/09/2025 10:15:22",
+                            nomeCidadao: "João Silva",
+                            localizacao: "Av. Principal, 123",
+                            tipoProblema: "Buraco na Via",
+                            descricao: "Buraco grande no asfalto causando perigo aos motoristas",
+                            qrCodeId: "CENTRO-001",
+                            temFoto: "Sim",
+                            status: "Novo"
+                        },
+                        {
+                            timestamp: "27/09/2025 09:30:15",
+                            nomeCidadao: "Maria Oliveira",
+                            localizacao: "Rua das Flores, 45",
+                            tipoProblema: "Iluminação Pública",
+                            descricao: "Poste com lâmpada queimada há mais de uma semana",
+                            qrCodeId: "BAIRRO-NORTE-002",
+                            temFoto: "Sim",
+                            status: "Em Análise"
+                        },
+                        {
+                            timestamp: "26/09/2025 16:45:33",
+                            nomeCidadao: "Carlos Mendes",
+                            localizacao: "Praça Central",
+                            tipoProblema: "Lixo/Entulho",
+                            descricao: "Acúmulo de lixo próximo aos bancos da praça",
+                            qrCodeId: "CENTRO-002",
+                            temFoto: "Não",
+                            status: "Em Andamento"
+                        },
+                        {
+                            timestamp: "25/09/2025 14:20:10",
+                            nomeCidadao: "Ana Pereira",
+                            localizacao: "Latitude: -23.5505, Longitude: -46.6333",
+                            tipoProblema: "Vazamento de Água",
+                            descricao: "Vazamento constante na calçada, formando poça",
+                            qrCodeId: "BAIRRO-SUL-001",
+                            temFoto: "Sim",
+                            status: "Concluído"
+                        }
+                    ];
+                    
+                    renderizarTabela(dadosSimulados);
+                    loadingElement.style.display = "none";
+                    tableContainer.style.display = "block";
+                }, 1500);
+                
+                /* Código para carregamento real (a ser implementado quando tivermos a URL do script)
+                fetch(scriptURL + "?action=getProblemas")
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error("Erro ao carregar dados");
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        renderizarTabela(data);
+                        loadingElement.style.display = "none";
+                        tableContainer.style.display = "block";
+                    })
+                    .catch(error => {
+                        console.error("Erro:", error);
+                        errorElement.textContent = "Erro ao carregar dados: " + error.message;
+                        errorElement.style.display = "block";
+                        loadingElement.style.display = "none";
+                    });
+                */
+            }
+            
+            // Função para renderizar a tabela com os dados
+            function renderizarTabela(dados) {
+                tableBody.innerHTML = "";
+                
+                if (!dados || dados.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="8" class="no-data">Nenhum problema registrado ainda.</td></tr>`;
+                    return;
+                }
+                
+                dados.forEach((problema, index) => {
+                    const row = document.createElement("tr");
+                    
+                    // Adicionar classe baseada no status
+                    if (problema.status) {
+                        const statusClass = "status-" + problema.status.toLowerCase().replace(/\s+/g, "-");
+                        row.classList.add(statusClass);
+                    }
+                    
+                    row.innerHTML = `
+                        <td>${problema.timestamp}</td>
+                        <td>${problema.nomeCidadao}</td>
+                        <td>${problema.localizacao}</td>
+                        <td>${problema.tipoProblema}</td>
+                        <td>${problema.descricao}</td>
+                        <td>${problema.qrCodeId}</td>
+                        <td>${problema.temFoto === "Sim" ? 
+                            `<span class="foto-link" data-index="${index}">Ver foto</span>` : 
+                            "Não disponível"}</td>
+                        <td>${problema.status}</td>
+                    `;
+                    
+                    tableBody.appendChild(row);
+                });
+                
+                // Adicionar eventos para os links de foto
+                document.querySelectorAll(".foto-link").forEach(link => {
+                    link.addEventListener("click", function() {
+                        // Em um cenário real, aqui carregaríamos a foto do problema
+                        // Por enquanto, usamos uma imagem de exemplo
+                        modalImage.src = "https://via.placeholder.com/800x600.png?text=Foto+do+Problema";
+                        fotoModal.style.display = "block";
+                    });
+                });
+            }
+            
+            // Evento para fechar o modal
+            closeModal.addEventListener("click", function() {
+                fotoModal.style.display = "none";
+            });
+            
+            // Fechar o modal ao clicar fora da imagem
+            window.addEventListener("click", function(event) {
+                if (event.target === fotoModal) {
+                    fotoModal.style.display = "none";
+                }
+            });
+            
+            // Evento para o botão de atualizar
+            btnRefresh.addEventListener("click", carregarDados);
+            
+            // Evento para o botão de logout
+            btnLogout.addEventListener("click", function() {
+                sessionStorage.removeItem("instructorAuthenticated");
+                window.location.href = "instrutor.html";
+            });
+            
+            // Carregar dados ao iniciar a página
+            carregarDados();
+        });
+    </script>
+</body>
+</html>
